@@ -5,6 +5,7 @@ from llm import get_system_prompt, call_llm
 from tools import TOOLS
 from context import reminder
 from todos import active_form
+from permissions import check
 
 console = Console()
 
@@ -38,10 +39,8 @@ def main():
         messages.append({"role": "user", "content": user_input})
         messages = trim_history(messages)
 
-        # Use 'as status' so we can update the spinner text mid-loop
         with console.status(f"[bold cyan]{active_form().capitalize()}...", spinner="dots") as status:
             while True:
-                # Dynamically update the spinner text based on the active todo
                 status.update(f"[bold cyan]{active_form().capitalize()}...")
                 
                 messages[0]["content"] = get_system_prompt()
@@ -56,9 +55,30 @@ def main():
                         
                         if func_name in TOOLS:
                             args = json.loads(tool_call.function.arguments)
-                            console.print(f"[dim yellow]System: Executing '{func_name}' with args: {args}[/dim yellow]")
                             
-                            tool_result = TOOLS[func_name](**args)
+                            # Pause the spinner to interact with the user safely
+                            status.stop()
+                            
+                            # 1. Run permission check
+                            action, reason = check(func_name, args)
+                            
+                            tool_result = ""
+                            if action == "deny":
+                                console.print(f"[bold red]System: Blocked by policy: {reason}[/bold red]")
+                                tool_result = f"Blocked by policy: {reason}"
+                            elif action == "ask":
+                                ans = console.input(f"[bold yellow]Agent wants to {reason}. Allow? (y/n): [/bold yellow]")
+                                if ans.strip().lower() != 'y':
+                                    tool_result = "The user denied this tool call."
+                                else:
+                                    console.print(f"[dim yellow]System: Executing '{func_name}' with args: {args}[/dim yellow]")
+                                    tool_result = TOOLS[func_name](**args)
+                            else:
+                                console.print(f"[dim yellow]System: Executing '{func_name}' with args: {args}[/dim yellow]")
+                                tool_result = TOOLS[func_name](**args)
+                            
+                            # Resume the spinner
+                            status.start()
                             
                             messages.append({
                                 "role": "tool",

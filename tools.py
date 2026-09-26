@@ -2,16 +2,16 @@ import subprocess
 from skills import read_skill, write_skill
 import requests
 from todos import write_todos, TODO_SCHEMA
+import sandbox
 
 # --- TOOL FUNCTIONS ---
 
 def bash(command: str) -> str:
     """Run a shell command and return its combined stdout and stderr."""
     try:
-        result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=60)
+        result = sandbox.run(command, timeout=60)
         output = (result.stdout + result.stderr) or "(no output)"
         
-        # Reduced from 4000 to 2000 chars (~500 tokens)
         max_chars = 2000
         if len(output) > max_chars:
             return output[:max_chars] + f"\n\n...[TRUNCATED: Output exceeded {max_chars} characters. Pipe to a file if you need more.]..."
