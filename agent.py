@@ -3,30 +3,16 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.markdown import Markdown
 from rich.text import Text
+
 from llm import get_system_prompt, call_llm
 from tools import TOOLS
 from context import reminder
 from todos import active_form
 from permissions import check
+import history
+import compact
 
 console = Console()
-
-def trim_history(messages, max_length=15):
-    """
-    Keeps the system prompt and the most recent messages. 
-    Slices cleanly at a 'user' message to avoid splitting tool calls from their results.
-    """
-    if len(messages) <= max_length:
-        return messages
-    
-    safe_index = 1
-    for i in range(len(messages) - max_length + 1, len(messages)):
-        role = messages[i].get("role") if isinstance(messages[i], dict) else messages[i].role
-        if role == "user":
-            safe_index = i
-            break
-            
-    return [messages[0]] + messages[safe_index:]
 
 def print_usage(usage):
     """Formats the token usage nicely at the bottom of the response."""
@@ -37,9 +23,7 @@ def print_usage(usage):
     cached = usage.get('cached_tokens', 0)
     completion = usage.get('completion_tokens', 0)
     
-    # Calculate cache hit percentage
     cache_pct = (cached / prompt * 100) if prompt > 0 else 0
-    
     stats = Text(f"Tokens ⬩ Prompt: {prompt} ({cache_pct:.0f}% cached) ⬩ Completion: {completion}", style="dim cyan")
     console.print(stats)
 
@@ -66,7 +50,6 @@ def main():
             continue
 
         messages.append({"role": "user", "content": user_input})
-        messages = trim_history(messages)
 
         with console.status(f"[bold cyan]{active_form().capitalize()}...", spinner="dots") as status:
             while True:
@@ -75,18 +58,28 @@ def main():
                 messages[0]["content"] = get_system_prompt()
                 injection = reminder()
                 
+                # Check emergency fit before calling
+                if history.fit(messages):
+                    console.print("[dim yellow]Note: Dropped old tool output to make this request fit.[/dim yellow]")
+                
                 try:
                     message, usage = call_llm(messages + [injection])
                 except Exception as e:
                     status.stop()
                     console.print(f"\n[bold red]API Error:[/bold red] {str(e)}")
-                    # Remove the last user message so they can re-try without duplicate prompts
-                    messages.pop()
+                    
+                    # FIX: Only pop if the last message was from the user. 
+                    # If it was a tool result, leave the history intact so the user can type "retry".
+                    if messages and messages[-1].get("role") == "user":
+                        messages.pop()
+                        
                     usage = None
                     message = None
                     break
                 
-                messages.append(message)
+                # Convert Pydantic object to dict so history and compact can process it cleanly
+                msg_dict = message.model_dump(exclude_none=True)
+                messages.append(msg_dict)
 
                 if getattr(message, 'tool_calls', None):
                     for tool_call in message.tool_calls:
@@ -99,8 +92,6 @@ def main():
                                 args = {}
                             
                             status.stop()
-                            
-                            # Permission check[cite: 24]
                             action, reason = check(func_name, args)
                             
                             tool_result = ""
@@ -137,6 +128,17 @@ def main():
                             })
                 else:
                     break 
+
+        # Turn is over: clean up temp files and shrink the tool outputs in the history array
+        history.sweep()
+        history.strip(messages)
+
+        # Trigger compaction sub-agent if the window is getting too large
+        if usage and compact.needed(usage):
+            console.print("[dim purple]Context window full. Compacting history...[/dim purple]")
+            with console.status("[bold purple]Summarizing old context...", spinner="bouncingBar"):
+                messages = compact.compact(messages)
+            console.print("[dim purple]Compaction complete.[/dim purple]")
 
         if message and message.content:
             console.print(Panel(Markdown(message.content), title="[bold purple]Agent[/bold purple]", border_style="purple"))

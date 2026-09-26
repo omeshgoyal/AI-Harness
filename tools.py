@@ -6,17 +6,22 @@ import sandbox
 
 # --- TOOL FUNCTIONS ---
 
+import subprocess
+import requests
+import sandbox
+import history
+from skills import read_skill, write_skill
+from todos import write_todos, TODO_SCHEMA
+
+# --- TOOL FUNCTIONS ---
+
 def bash(command: str) -> str:
     """Run a shell command and return its combined stdout and stderr."""
     try:
         result = sandbox.run(command, timeout=60)
         output = (result.stdout + result.stderr) or "(no output)"
-        
-        max_chars = 2000
-        if len(output) > max_chars:
-            return output[:max_chars] + f"\n\n...[TRUNCATED: Output exceeded {max_chars} characters. Pipe to a file if you need more.]..."
-            
-        return output
+        # FIX: Route through history.cap
+        return history.cap(output)
     except subprocess.TimeoutExpired as expired:
         return f"Timed out after {expired.timeout}s and was killed."
     except Exception as e:
@@ -26,11 +31,22 @@ def read_file(path: str) -> str:
     """Read a file and return its contents."""
     try:
         with open(path) as f:
-            content = f.read()
-            # Failsafe limit for massive files
-            return content[:12000] + "\n...[TRUNCATED]" if len(content) > 12000 else content
+            # FIX: Route through history.cap
+            return history.cap(f.read())
     except Exception as e:
         return str(e)
+
+def fetch_url(url: str) -> str:
+    """Fetch a URL and return its text content formatted as clean Markdown."""
+    jina_url = f"https://r.jina.ai/{url}"
+    try:
+        headers = {"X-Return-Format": "text"}
+        response = requests.get(jina_url, headers=headers, timeout=15) 
+        response.raise_for_status()
+        # FIX: Route through history.cap
+        return history.cap(response.text)
+    except Exception as e:
+        return f"Error fetching URL: {str(e)}"
 
 def write_file(path: str, content: str) -> str:
     """Create a file, or overwrite it if it already exists."""
@@ -63,24 +79,6 @@ def str_replace(path: str, old_str: str, new_str: str, allow_multi_edit: bool = 
     except Exception as e:
         return str(e)
 
-def fetch_url(url: str) -> str:
-    """Fetch a URL and return its text content formatted as clean Markdown."""
-    jina_url = f"https://r.jina.ai/{url}"
-    try:
-        # Request text mode without images to save tokens
-        headers = {"X-Return-Format": "text"}
-        response = requests.get(jina_url, headers=headers, timeout=15) 
-        response.raise_for_status()
-        text = response.text
-        
-        # Slashed from 12000 to 6000 (~1500 tokens)
-        max_chars = 6000 
-        if len(text) > max_chars:
-            return text[:max_chars] + f"\n\n...[TRUNCATED: Output exceeded {max_chars} characters]..."
-            
-        return text
-    except Exception as e:
-        return f"Error fetching URL: {str(e)}"
 
 # --- TOOL SCHEMAS ---
 
@@ -88,7 +86,7 @@ BASH_TOOL = {
     "type": "function",
     "function": {
         "name": "bash",
-        "description": "Run a shell command and return its combined stdout and stderr.",
+        "description": "Run a shell command. Each command runs in a new ephemeral shell. Do not use 'cd' alone to change directories; instead, chain commands (e.g., 'cd folder && ls') or use absolute paths.",
         "parameters": {
             "type": "object",
             "properties": {
