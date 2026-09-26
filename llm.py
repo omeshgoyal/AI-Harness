@@ -12,11 +12,18 @@ client = OpenAI(
 )
 MODEL = "deepseek/deepseek-v4.1-flash"
 
+# (Keep imports and API setup...)
+
 def get_system_prompt():
-    """Generates the system prompt dynamically so newly written skills appear instantly."""
     return f"""You are a coding agent. Your job is to code. Always code.
 Use the bash tool to inspect files, write_file to create them, and str_replace to edit them.
-Use write_skill to teach yourself new capabilities when the user asks you to learn something new.
+Use write_skill to teach yourself new capabilities.
+
+For any task that takes more than one step, call write_todos first and plan it out. 
+Send the whole list every time you call it - it replaces the old one. 
+Keep exactly one task in_progress, mark it done the moment it is finished, and move the next one to in_progress in the same call.
+
+The current list is injected back to you every turn inside <todos> tags.
 
 You have skills available. Each one is a set of instructions for a task.
 If a skill matches what the user wants, call read_skill first and follow it.
@@ -25,6 +32,8 @@ If a skill matches what the user wants, call read_skill first and follow it.
 
 Answer back to the user once exploration is done.
 """
+
+# (Keep call_llm function...)
 
 def call_llm(messages):
     response = client.chat.completions.create(

@@ -4,14 +4,11 @@ from rich.panel import Panel
 from llm import get_system_prompt, call_llm
 from tools import TOOLS
 from context import reminder
+from todos import active_form
 
 console = Console()
 
 def trim_history(messages, max_length=15):
-    """
-    Keeps the system prompt and the most recent messages. 
-    Slices cleanly at a 'user' message to avoid splitting tool calls from their results.
-    """
     if len(messages) <= max_length:
         return messages
     
@@ -41,14 +38,15 @@ def main():
         messages.append({"role": "user", "content": user_input})
         messages = trim_history(messages)
 
-        with console.status("[bold cyan]Agent is thinking...", spinner="dots"):
+        # Use 'as status' so we can update the spinner text mid-loop
+        with console.status(f"[bold cyan]{active_form().capitalize()}...", spinner="dots") as status:
             while True:
-                messages[0]["content"] = get_system_prompt()
+                # Dynamically update the spinner text based on the active todo
+                status.update(f"[bold cyan]{active_form().capitalize()}...")
                 
-                # Fetch the dynamic late injection
+                messages[0]["content"] = get_system_prompt()
                 injection = reminder()
                 
-                # Append it temporarily for this call only
                 message, usage = call_llm(messages + [injection])
                 messages.append(message)
 

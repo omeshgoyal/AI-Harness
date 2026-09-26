@@ -1,6 +1,7 @@
 import subprocess
 from skills import read_skill, write_skill
 import requests
+from todos import write_todos, TODO_SCHEMA
 
 # --- TOOL FUNCTIONS ---
 
@@ -197,8 +198,9 @@ FETCH_URL_TOOL = {
     },
 }
 
-TOOL_SCHEMAS = [BASH_TOOL, READ_TOOL, WRITE_TOOL, STR_REPLACE_TOOL, READ_SKILL_TOOL, WRITE_SKILL_TOOL, FETCH_URL_TOOL]
+TOOL_SCHEMAS = [BASH_TOOL, READ_TOOL, WRITE_TOOL, STR_REPLACE_TOOL, READ_SKILL_TOOL, WRITE_SKILL_TOOL, FETCH_URL_TOOL, TODO_SCHEMA]
 
+# Add write_todos to the mapping
 TOOLS = {
     "bash": bash,
     "read_file": read_file,
@@ -206,5 +208,6 @@ TOOLS = {
     "str_replace": str_replace,
     "read_skill": read_skill,
     "write_skill": write_skill,
-    "fetch_url": fetch_url
+    "fetch_url": fetch_url,
+    "write_todos": write_todos
 }
