@@ -1,18 +1,23 @@
 import os
 from openai import OpenAI
 from dotenv import load_dotenv
-from tools import TOOL_SCHEMAS
 from skills import skills_prompt
 
 load_dotenv()
 
-client = OpenAI(
-    base_url="https://openrouter.ai/api/v1",
-    api_key=os.getenv("OPENROUTER_API_KEY"),
-)
-MODEL = "deepseek/deepseek-v4.1-flash"
-
-# (Keep imports and API setup...)
+# Dynamic model routing
+if os.getenv("GROQ_API_KEY"):
+    client = OpenAI(
+        base_url="https://api.groq.com/openai/v1",
+        api_key=os.getenv("GROQ_API_KEY"),
+    )
+    MODEL = "llama-3.3-70b-versatile"
+else:
+    client = OpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=os.getenv("OPENROUTER_API_KEY"),
+    )
+    MODEL = "deepseek/deepseek-v4.1-flash"
 
 def get_system_prompt():
     return f"""You are a coding agent. Your job is to code. Always code.
@@ -22,6 +27,8 @@ Use write_skill to teach yourself new capabilities.
 For any task that takes more than one step, call write_todos first and plan it out. 
 Send the whole list every time you call it - it replaces the old one. 
 Keep exactly one task in_progress, mark it done the moment it is finished, and move the next one to in_progress in the same call.
+
+When you need to understand how something works - where a feature lives, how data flows - send a task subagent instead of grepping your way there yourself. It explores in its own context window and hands you back just the findings.
 
 The current list is injected back to you every turn inside <todos> tags.
 
@@ -33,13 +40,18 @@ If a skill matches what the user wants, call read_skill first and follow it.
 Answer back to the user once exploration is done.
 """
 
-# (Keep call_llm function...)
-
-def call_llm(messages):
+def call_llm(messages, tools=None):
+    # Only import TOOL_SCHEMAS if no explicit tools are provided
+    if tools is None:
+        from tools import TOOL_SCHEMAS
+        active_tools = TOOL_SCHEMAS
+    else:
+        active_tools = tools
+        
     response = client.chat.completions.create(
         model=MODEL,
         messages=messages,
-        tools=TOOL_SCHEMAS,
+        tools=active_tools,
         max_tokens=4096  
     )
 
