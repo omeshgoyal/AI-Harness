@@ -10,9 +10,10 @@ def bash(command: str) -> str:
         result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=60)
         output = (result.stdout + result.stderr) or "(no output)"
         
-        max_chars = 4000
+        # Reduced from 4000 to 2000 chars (~500 tokens)
+        max_chars = 2000
         if len(output) > max_chars:
-            return output[:max_chars] + f"\n\n...[TRUNCATED: Output exceeded {max_chars} characters]..."
+            return output[:max_chars] + f"\n\n...[TRUNCATED: Output exceeded {max_chars} characters. Pipe to a file if you need more.]..."
             
         return output
     except subprocess.TimeoutExpired as expired:
@@ -24,7 +25,9 @@ def read_file(path: str) -> str:
     """Read a file and return its contents."""
     try:
         with open(path) as f:
-            return f.read()
+            content = f.read()
+            # Failsafe limit for massive files
+            return content[:12000] + "\n...[TRUNCATED]" if len(content) > 12000 else content
     except Exception as e:
         return str(e)
 
@@ -63,13 +66,14 @@ def fetch_url(url: str) -> str:
     """Fetch a URL and return its text content formatted as clean Markdown."""
     jina_url = f"https://r.jina.ai/{url}"
     try:
-        response = requests.get(jina_url, timeout=15) 
+        # Request text mode without images to save tokens
+        headers = {"X-Return-Format": "text"}
+        response = requests.get(jina_url, headers=headers, timeout=15) 
         response.raise_for_status()
         text = response.text
         
-        # 1 token is roughly 4 characters. 
-        # Capping at 12,000 characters keeps this output under ~3,000 tokens.
-        max_chars = 12000 
+        # Slashed from 12000 to 6000 (~1500 tokens)
+        max_chars = 6000 
         if len(text) > max_chars:
             return text[:max_chars] + f"\n\n...[TRUNCATED: Output exceeded {max_chars} characters]..."
             
@@ -193,10 +197,8 @@ FETCH_URL_TOOL = {
     },
 }
 
-# Add FETCH_URL_TOOL to the list
 TOOL_SCHEMAS = [BASH_TOOL, READ_TOOL, WRITE_TOOL, STR_REPLACE_TOOL, READ_SKILL_TOOL, WRITE_SKILL_TOOL, FETCH_URL_TOOL]
 
-# Add fetch_url to the mapping
 TOOLS = {
     "bash": bash,
     "read_file": read_file,

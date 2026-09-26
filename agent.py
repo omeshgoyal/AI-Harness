@@ -3,8 +3,26 @@ from rich.console import Console
 from rich.panel import Panel
 from llm import get_system_prompt, call_llm
 from tools import TOOLS
+from context import reminder
 
 console = Console()
+
+def trim_history(messages, max_length=15):
+    """
+    Keeps the system prompt and the most recent messages. 
+    Slices cleanly at a 'user' message to avoid splitting tool calls from their results.
+    """
+    if len(messages) <= max_length:
+        return messages
+    
+    safe_index = 1
+    for i in range(len(messages) - max_length + 1, len(messages)):
+        role = messages[i].get("role") if isinstance(messages[i], dict) else messages[i].role
+        if role == "user":
+            safe_index = i
+            break
+            
+    return [messages[0]] + messages[safe_index:]
 
 def main():
     console.print(Panel("[bold green]Chat started. Type 'exit' to quit.[/bold green]", expand=False))
@@ -21,13 +39,17 @@ def main():
             break
 
         messages.append({"role": "user", "content": user_input})
+        messages = trim_history(messages)
 
         with console.status("[bold cyan]Agent is thinking...", spinner="dots"):
             while True:
-                # Always ensure the latest system prompt is injected in case a skill was just created
                 messages[0]["content"] = get_system_prompt()
                 
-                message, usage = call_llm(messages)
+                # Fetch the dynamic late injection
+                injection = reminder()
+                
+                # Append it temporarily for this call only
+                message, usage = call_llm(messages + [injection])
                 messages.append(message)
 
                 if message.tool_calls:
