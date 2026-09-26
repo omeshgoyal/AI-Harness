@@ -24,6 +24,12 @@ def find_skills():
 # Global dictionary holding active skills[cite: 11]
 SKILLS = find_skills()
 
+def reload_skills():
+    """Refresh the active skills in place so existing references stay valid."""
+    SKILLS.clear()
+    SKILLS.update(find_skills())
+    return SKILLS
+
 def skills_prompt():
     if not SKILLS:
         return "- No skills currently loaded."
@@ -37,8 +43,6 @@ def read_skill(name: str) -> str:
 
 def write_skill(name: str, description: str, instructions: str) -> str:
     """Creates a new skill directory, writes the SKILL.md file, and reloads the active skills."""
-    global SKILLS
-    
     # Target the local project's skill directory
     target_dir = Path.cwd() / ".agents" / "skills" / name
     target_dir.mkdir(parents=True, exist_ok=True)
@@ -49,7 +53,7 @@ def write_skill(name: str, description: str, instructions: str) -> str:
     content = f"---\nname: {name}\ndescription: {description}\n---\n{instructions}"
     skill_file.write_text(content)
     
-    # Reload skills so it's immediately available to the agent
-    SKILLS = find_skills()
+    # Reload in place so any module holding a reference to SKILLS sees the update
+    reload_skills()
     
     return f"Successfully created skill '{name}' at {skill_file}. It is now active."
