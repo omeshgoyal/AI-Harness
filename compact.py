@@ -41,13 +41,30 @@ work so far, not as something the user told you.
 {summary}
 </summary>"""
 
+ROLES = {"user": "USER", "assistant": "ASSISTANT", "tool": "TOOL RESULT"}
+
+
+def _as_text(content):
+    """Content can be a plain string or a list of content blocks; flatten either."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for block in content:
+            if isinstance(block, dict):
+                parts.append(block.get("text") or block.get("content") or "")
+            else:
+                parts.append(str(block))
+        return "\n".join(p for p in parts if p)
+    return str(content) if content else ""
+
+
 def needed(usage):
     """Has the last request grown past the point where we rebuild?"""
     if not usage:
         return False
     return usage.get("prompt_tokens", 0) > config.CONTEXT_WINDOW * config.COMPACT_AT
 
-ROLES = {"user": "USER", "assistant": "ASSISTANT", "tool": "TOOL RESULT"}
 
 def render(messages):
     """Flatten the transcript into something the summariser can read."""
@@ -56,7 +73,7 @@ def render(messages):
         if message.get("role") == "system":
             continue
 
-        content = message.get("content") or ""
+        content = _as_text(message.get("content"))
         for call in message.get("tool_calls") or []:
             function = call["function"]
             content += f"\n[called {function['name']}: {function['arguments']}]"
@@ -65,16 +82,18 @@ def render(messages):
         lines.append(f"{ROLES.get(role, role)}: {content}")
     return "\n\n".join(lines)
 
+
 def summarize(messages):
     """One LLM call, no tools. Returns the handoff note."""
     response = client.chat.completions.create(
-        model=config.MODEL,
+        model=config.SUBAGENT_MODEL,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": render(messages)},
         ],
     )
     return response.choices[0].message.content
+
 
 def safe_boundary(messages, start):
     """First index at or after `start` where cutting cannot orphan a tool call."""
@@ -85,6 +104,7 @@ def safe_boundary(messages, start):
         return index
     return len(messages)
 
+
 def tail_start(messages, budget):
     """Walk back from the end, taking messages until the tail fills `budget`."""
     total = 0
@@ -93,6 +113,7 @@ def tail_start(messages, budget):
         if total > budget:
             return safe_boundary(messages, index)
     return safe_boundary(messages, 1)
+
 
 def compact(messages):
     """system + summary + a recent tail. The caller freezes what comes back."""

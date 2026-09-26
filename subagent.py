@@ -1,9 +1,10 @@
-import os
 import json
 from rich.console import Console
 
+import config
+
 console = Console()
-MAX_TURNS = 12 
+MAX_TURNS = 12
 
 # Structural block: these tools are completely stripped from the subagent's toolset.
 # It cannot recurse (task), mess with the plan (write_todos), or edit files.
@@ -17,7 +18,7 @@ You cannot see the conversation that spawned you, and the lead agent cannot
 see anything you do here. Only your final message crosses back, so it has to
 stand on its own.
 
-You are working in {os.getcwd()}. Search inside it. Never search from / or
+You are working in {{cwd}}. Search inside it. Never search from / or
 from the home directory - that scans the whole machine and will time out.
 
 How to work:
@@ -36,23 +37,26 @@ agent open it. Say plainly what you could not find; a gap is useful, a guess
 is not.
 """
 
+
 def toolset():
     """Every tool except the ones a guest should not hold."""
     from tools import TOOL_SCHEMAS
     return [s for s in TOOL_SCHEMAS if s["function"]["name"] not in WITHHELD]
 
+
 def task(description: str) -> str:
     """Run a fresh agent on one question and return only its final answer."""
+    import os
     from history import fit
-    from llm import call_llm
-    from tools import TOOLS
+    from llm import call_llm, BudgetExceeded
+    from tools import safe_call
     from permissions import check
 
     messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": SYSTEM_PROMPT.format(cwd=os.getcwd())},
         {"role": "user", "content": description},
     ]
-    
+
     console.print(f"\n[bold magenta]🕵️ Subagent deployed:[/bold magenta] {description}")
     report = None
 
@@ -61,11 +65,13 @@ def task(description: str) -> str:
 
         with console.status("[bold magenta]Subagent exploring...", spinner="bouncingBar") as status:
             try:
-                # Provide the restricted toolset so it cannot edit files or spawn loops
-                message, usage = call_llm(messages, tools=toolset())
+                message, usage = call_llm(messages, tools=toolset(), model=config.SUBAGENT_MODEL)
+            except BudgetExceeded as e:
+                console.print(f"[bold red]Subagent stopped - budget cap hit:[/bold red] {e}")
+                return f"(stopped: {e})"
             except Exception as e:
                 console.print(f"[bold red]Subagent API Error:[/bold red] {e}")
-                break
+                return report or f"(the subagent's API call failed: {e})"
 
             messages.append(message.model_dump(exclude_none=True))
             report = message.content or report
@@ -76,18 +82,29 @@ def task(description: str) -> str:
 
             for tool_call in message.tool_calls:
                 func_name = tool_call.function.name
-                if func_name in TOOLS:
+                if func_name in WITHHELD or func_name not in toolset_names():
+                    tool_result = f"Error: '{func_name}' is not available to a subagent."
+                else:
                     try:
                         args = json.loads(tool_call.function.arguments)
                     except json.JSONDecodeError:
                         args = {}
-                    
+
                     status.stop()
                     action, reason = check(func_name, args)
-                    
+
                     if action == "deny":
                         console.print(f"[bold red]⛔ Subagent Blocked:[/bold red] {reason}")
                         tool_result = f"Blocked by policy: {reason}"
+                    elif action == "confirm":
+                        console.print(f"[bold red]🚨 DANGEROUS:[/bold red] subagent wants to {reason}")
+                        ans = console.input("[bold yellow]Type 'yes' (in full) to allow, anything else to deny: [/bold yellow]")
+                        if ans.strip().lower() != 'yes':
+                            console.print("[dim red]Denied by user.[/dim red]")
+                            tool_result = "The user denied this dangerous tool call."
+                        else:
+                            console.print(f"[dim magenta]⚡ Subagent executing '{func_name}'...[/dim magenta]")
+                            tool_result = safe_call(func_name, args)
                     elif action == "ask":
                         ans = console.input(f"[bold yellow]⚠️ Subagent wants to {reason}. Allow? (y/n): [/bold yellow]")
                         if ans.strip().lower() != 'y':
@@ -95,26 +112,19 @@ def task(description: str) -> str:
                             tool_result = "The user denied this tool call."
                         else:
                             console.print(f"[dim magenta]⚡ Subagent executing '{func_name}'...[/dim magenta]")
-                            tool_result = TOOLS[func_name](**args)
+                            tool_result = safe_call(func_name, args)
                     else:
                         console.print(f"[dim magenta]⚡ Subagent executing '{func_name}'...[/dim magenta]")
-                        tool_result = TOOLS[func_name](**args)
-                    
+                        tool_result = safe_call(func_name, args)
+
                     status.start()
-                    
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "name": func_name,
-                        "content": str(tool_result)
-                    })
-                else:
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "name": func_name,
-                        "content": "Error: Tool not found."
-                    })
+
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "name": func_name,
+                    "content": str(tool_result),
+                })
 
     if report:
         return (
@@ -122,6 +132,11 @@ def task(description: str) -> str:
             f"findings below - narrow the question and ask again.)\n\n{report}"
         )
     return f"(stopped after {MAX_TURNS} turns with nothing to report.)"
+
+
+def toolset_names():
+    return {s["function"]["name"] for s in toolset()}
+
 
 TASK_SCHEMA = {
     "type": "function",

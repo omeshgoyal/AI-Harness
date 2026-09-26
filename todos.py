@@ -2,8 +2,15 @@ MARKS = {"pending": "[ ]", "in_progress": "[~]", "done": "[x]"}
 
 TODOS = []  # [{"content": ..., "activeForm": ..., "status": ...}]
 
+
 def write_todos(todos: list) -> str:
     """Replace the whole list. Exactly one task may be in_progress."""
+    for t in todos:
+        if t.get("status") not in MARKS:
+            return f"Error: '{t.get('status')}' is not a valid status. Use one of {list(MARKS)}."
+        if not t.get("content") or not t.get("activeForm"):
+            return "Error: every todo needs both 'content' and 'activeForm'."
+
     active = [t for t in todos if t["status"] == "in_progress"]
     if len(active) > 1:
         return f"Error: {len(active)} tasks are in_progress. Only one may be."
@@ -11,8 +18,10 @@ def write_todos(todos: list) -> str:
     TODOS[:] = todos
     return todos_prompt() or "Todo list cleared."
 
+
 def todos_prompt() -> str:
     return "\n".join(f"{MARKS[t['status']]} {t['content']}" for t in TODOS)
+
 
 def active_form() -> str:
     """What the agent is doing right now, for the spinner."""
@@ -20,6 +29,7 @@ def active_form() -> str:
         if todo["status"] == "in_progress":
             return todo["activeForm"]
     return "thinking"
+
 
 TODO_SCHEMA = {
     "type": "function",

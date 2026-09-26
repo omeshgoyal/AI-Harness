@@ -8,8 +8,8 @@ Safe, clean git operations with conventional commit messages.
 
 ## Before any commit
 1. `git status` — see what exists and what's staged.
-2. `git diff` and `git diff --staged` — read every change you are about to commit. Never commit blindly.
-3. Confirm no secrets are included: scan the diff for keys, tokens, `.env`, credentials. If found, stop and warn.
+2. Briefly review changes using `git diff --stat`. Only read the full `git diff` or `git diff --staged` if the changes are small or if you need specific details to write a good commit message. For large diffs, avoid reading the entire output unless strictly necessary.
+3. Keep an eye out for secrets (keys, tokens, `.env`, credentials) when reviewing code, but a full scan of the diff is only required if the user specifically requests it or the task involves sensitive files. If found, stop and warn.
 4. Check you are on the intended branch: `git branch --show-current`. Don't commit directly to `main`/`master` unless the user asked.
 
 ## Staging
