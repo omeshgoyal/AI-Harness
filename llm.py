@@ -10,7 +10,6 @@ client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
     api_key=os.getenv("OPENROUTER_API_KEY"),
 )
-
 MODEL = "deepseek/deepseek-v4.1-flash"
 
 def get_system_prompt():

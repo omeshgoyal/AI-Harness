@@ -1,5 +1,6 @@
 import subprocess
 from skills import read_skill, write_skill
+import requests
 
 # --- TOOL FUNCTIONS ---
 
@@ -7,7 +8,13 @@ def bash(command: str) -> str:
     """Run a shell command and return its combined stdout and stderr."""
     try:
         result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=60)
-        return (result.stdout + result.stderr) or "(no output)"
+        output = (result.stdout + result.stderr) or "(no output)"
+        
+        max_chars = 4000
+        if len(output) > max_chars:
+            return output[:max_chars] + f"\n\n...[TRUNCATED: Output exceeded {max_chars} characters]..."
+            
+        return output
     except subprocess.TimeoutExpired as expired:
         return f"Timed out after {expired.timeout}s and was killed."
     except Exception as e:
@@ -51,6 +58,24 @@ def str_replace(path: str, old_str: str, new_str: str, allow_multi_edit: bool = 
         return f"Replaced {count} match(es) in {path}"
     except Exception as e:
         return str(e)
+
+def fetch_url(url: str) -> str:
+    """Fetch a URL and return its text content formatted as clean Markdown."""
+    jina_url = f"https://r.jina.ai/{url}"
+    try:
+        response = requests.get(jina_url, timeout=15) 
+        response.raise_for_status()
+        text = response.text
+        
+        # 1 token is roughly 4 characters. 
+        # Capping at 12,000 characters keeps this output under ~3,000 tokens.
+        max_chars = 12000 
+        if len(text) > max_chars:
+            return text[:max_chars] + f"\n\n...[TRUNCATED: Output exceeded {max_chars} characters]..."
+            
+        return text
+    except Exception as e:
+        return f"Error fetching URL: {str(e)}"
 
 # --- TOOL SCHEMAS ---
 
@@ -153,13 +178,31 @@ WRITE_SKILL_TOOL = {
     },
 }
 
-TOOL_SCHEMAS = [BASH_TOOL, READ_TOOL, WRITE_TOOL, STR_REPLACE_TOOL, READ_SKILL_TOOL, WRITE_SKILL_TOOL]
+FETCH_URL_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "fetch_url",
+        "description": "Fetch the contents of a webpage and return it as clean Markdown. Use this to read articles, documentation, or search results.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "url": {"type": "string", "description": "The full HTTP/HTTPS URL to fetch"}
+            },
+            "required": ["url"],
+        },
+    },
+}
 
+# Add FETCH_URL_TOOL to the list
+TOOL_SCHEMAS = [BASH_TOOL, READ_TOOL, WRITE_TOOL, STR_REPLACE_TOOL, READ_SKILL_TOOL, WRITE_SKILL_TOOL, FETCH_URL_TOOL]
+
+# Add fetch_url to the mapping
 TOOLS = {
     "bash": bash,
     "read_file": read_file,
     "write_file": write_file,
     "str_replace": str_replace,
     "read_skill": read_skill,
-    "write_skill": write_skill
+    "write_skill": write_skill,
+    "fetch_url": fetch_url
 }
