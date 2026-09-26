@@ -1,7 +1,7 @@
 import json
 from rich.console import Console
 from rich.panel import Panel
-from llm import SYSTEM_PROMPT, call_llm
+from llm import get_system_prompt, call_llm
 from tools import TOOLS
 
 console = Console()
@@ -9,7 +9,7 @@ console = Console()
 def main():
     console.print(Panel("[bold green]Chat started. Type 'exit' to quit.[/bold green]", expand=False))
     
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    messages = [{"role": "system", "content": get_system_prompt()}]
 
     while True:
         try:
@@ -24,6 +24,9 @@ def main():
 
         with console.status("[bold cyan]Agent is thinking...", spinner="dots"):
             while True:
+                # Always ensure the latest system prompt is injected in case a skill was just created
+                messages[0]["content"] = get_system_prompt()
+                
                 message, usage = call_llm(messages)
                 messages.append(message)
 

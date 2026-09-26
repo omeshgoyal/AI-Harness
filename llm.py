@@ -13,9 +13,11 @@ client = OpenAI(
 
 MODEL = "deepseek/deepseek-v4.1-flash"
 
-SYSTEM_PROMPT = f"""
-You are a coding agent. Your job is to code. Always code.
-Use the bash tool to inspect files and read_file to view contents.
+def get_system_prompt():
+    """Generates the system prompt dynamically so newly written skills appear instantly."""
+    return f"""You are a coding agent. Your job is to code. Always code.
+Use the bash tool to inspect files, write_file to create them, and str_replace to edit them.
+Use write_skill to teach yourself new capabilities when the user asks you to learn something new.
 
 You have skills available. Each one is a set of instructions for a task.
 If a skill matches what the user wants, call read_skill first and follow it.
