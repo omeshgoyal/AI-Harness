@@ -1,3 +1,5 @@
+import config
+
 import subprocess
 from pathlib import Path
 
@@ -15,7 +17,6 @@ from subagent import task, TASK_SCHEMA
 def bash(command: str) -> str:
     """Run a shell command and return its combined stdout and stderr."""
     try:
-        import config
         result = sandbox.run(command, timeout=config.BASH_TIMEOUT)
         output = (result.stdout + result.stderr) or "(no output)"
         return history.cap(output)
@@ -28,7 +29,7 @@ def bash(command: str) -> str:
 def read_file(path: str) -> str:
     """Read a file and return its contents."""
     try:
-        with open(path) as f:
+        with open(config.resolve_path(path)) as f:
             return history.cap(f.read())
     except Exception as e:
         return str(e)
@@ -50,7 +51,8 @@ def write_file(path: str, content: str) -> str:
     """Create a file, or overwrite it if it already exists."""
     try:
         checkpoints.snapshot(path)  # so /undo can restore (or delete) it later
-        with open(path, "w") as f:
+        config.resolve_path(path).parent.mkdir(parents=True, exist_ok=True)
+        with open(config.resolve_path(path), "w") as f:
             f.write(content)
         return f"Wrote {path}"
     except Exception as e:
@@ -60,7 +62,7 @@ def write_file(path: str, content: str) -> str:
 def str_replace(path: str, old_str: str, new_str: str, allow_multi_edit: bool = False) -> str:
     """Swap exact text in a file. old_str must match exactly once."""
     try:
-        with open(path) as f:
+        with open(config.resolve_path(path)) as f:
             content = f.read()
 
         count = content.count(old_str)
@@ -74,7 +76,8 @@ def str_replace(path: str, old_str: str, new_str: str, allow_multi_edit: bool = 
             )
 
         checkpoints.snapshot(path)  # before the file is actually touched
-        with open(path, "w") as f:
+        config.resolve_path(path).parent.mkdir(parents=True, exist_ok=True)
+        with open(config.resolve_path(path), "w") as f:
             f.write(content.replace(old_str, new_str))
         return f"Replaced {count} match(es) in {path}"
     except Exception as e:
@@ -84,7 +87,7 @@ def str_replace(path: str, old_str: str, new_str: str, allow_multi_edit: bool = 
 def list_dir(path: str = ".", recursive: bool = False) -> str:
     """List a directory's contents. Cheaper than a bash 'ls' round trip for the model."""
     try:
-        base = Path(path)
+        base = config.resolve_path(path)
         if not base.is_dir():
             return f"Error: {path} is not a directory"
         entries = base.rglob("*") if recursive else base.iterdir()
@@ -100,7 +103,7 @@ def list_dir(path: str = ".", recursive: bool = False) -> str:
 def glob_files(pattern: str, path: str = ".") -> str:
     """Find files under `path` matching a glob pattern, e.g. '**/*.py'."""
     try:
-        base = Path(path)
+        base = config.resolve_path(path)
         matches = [str(p) for p in base.glob(pattern) if p.is_file()]
         return history.cap("\n".join(sorted(matches)) or "(no matches)")
     except Exception as e:

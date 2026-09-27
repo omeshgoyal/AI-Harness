@@ -52,8 +52,11 @@ def _record_cost(model, usage):
 
 
 def get_system_prompt():
-    return f"""You are a coding agent. Your job is to code. Always code.
-Use the bash tool to inspect files, write_file to create them, and str_replace to edit them.
+    return f"""You are a coding agent. Your job is to code.
+Only use the `write_file` or `str_replace` tools to modify project files if the user explicitly asks you to.
+Otherwise, output the code as markdown blocks in your response. 
+If the code is very long, use `write_file` to save it to `static/downloads/<filename>` and provide a markdown download link (e.g., `[Download <filename>](/static/downloads/<filename>)`) instead of polluting the chat with massive code blocks.
+Use the bash tool to inspect files.
 Use write_skill to teach yourself new capabilities.
 
 For any task that takes more than one step, call write_todos first and plan it out.

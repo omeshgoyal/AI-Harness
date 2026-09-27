@@ -45,3 +45,17 @@ CONFIRM_EDITS = os.getenv("AGENT_CONFIRM_EDITS", "0") == "1"
 
 SESSION_DIR_NAME = ".agents/sessions"
 CHECKPOINT_DIR_NAME = ".agents/checkpoints"
+from pathlib import Path
+# Protect the AI Harness code itself
+HARNESS_DIR = Path(__file__).resolve().parent
+
+# The active working directory for user projects (outside the harness)
+WORKSPACE_DIR = Path(os.getenv("WORKSPACE", str(HARNESS_DIR.parent / "Workspace"))).resolve()
+
+from pathlib import Path
+
+def resolve_path(p):
+    path_obj = Path(p).expanduser()
+    if path_obj.is_absolute():
+        return path_obj.resolve()
+    return (WORKSPACE_DIR / path_obj).resolve()

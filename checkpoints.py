@@ -12,6 +12,8 @@ commit", and it costs nothing until a write actually happens.
 """
 
 from pathlib import Path
+import config
+import tools
 
 _current_turn = []   # snapshots taken so far in the turn that hasn't ended yet
 HISTORY = []          # committed turns, oldest first; HISTORY[-1] is what /undo restores
@@ -26,11 +28,11 @@ def begin_turn():
 
 def snapshot(path):
     """Record the pre-edit state of `path`, the first time it's touched this turn."""
-    resolved = str(Path(path))
+    resolved = str(config.resolve_path(path))
     if any(entry["path"] == resolved for entry in _current_turn):
         return  # already have this turn's "before" for this file
 
-    p = Path(path)
+    p = config.resolve_path(path)
     existed = p.exists()
     try:
         content = p.read_bytes() if existed else None
